@@ -47,14 +47,14 @@ const CAMERAS: CameraConfig[] = [
   {
     id: 'camera_1',
     name: '1-Kamera: Old Panoramik Ko\'rinish',
-    defaultStreamUrl: 'http://192.168.137.187:81/stream',
+    defaultStreamUrl: 'http://192.168.137.181:81/stream',
     demoImageUrl: `${API_BASE_URL}/static/leaf_healthy.jpg`,
     description: 'Rover yo\'nalishi va umumiy ekin qatorlarini panoramik nazorat qilish'
   },
   {
     id: 'camera_2',
     name: '2-Kamera: Makro Barg Patologiyasi',
-    defaultStreamUrl: 'http://192.168.137.187:81/stream',
+    defaultStreamUrl: 'http://192.168.137.181:81/stream',
     demoImageUrl: `${API_BASE_URL}/static/leaf_blight_early.jpg`,
     description: 'Bargdagi mikro-kasalliklar, zamburug\' va zararkunandalarni yaqindan aniqlash'
   }
