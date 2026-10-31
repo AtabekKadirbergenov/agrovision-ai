@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const item = serverStore.pushTelemetry({
+    const item = serverStore.recordPhysicalTelemetry({
       temperature: temp,
       air_humidity: airH,
       soil_humidity: soilH,

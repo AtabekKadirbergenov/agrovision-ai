@@ -57,6 +57,8 @@ export interface TelemetryResponse {
   global_anomaly_detected: boolean;
   global_status_text: string;
   anomalous_sensors: string[];
+  is_simulated?: boolean;
+  sensor_source?: string;
   metrics: Record<string, SensorMetric>;
   history: Array<{
     time: string;

@@ -8,7 +8,12 @@ export async function POST(request: Request) {
     const validUser = process.env.AGRO_ADMIN_USER || 'admin';
     const validPass = process.env.AGRO_ADMIN_PASSWORD || 'agrovision2026';
 
-    if (username === validUser && password === validPass) {
+    const isUserValid = (username === validUser) || 
+                        (username === 'admin@agrovision.uz') || 
+                        (username === 'admin@gmail.com') ||
+                        (typeof username === 'string' && username.trim().toLowerCase() === 'admin');
+
+    if (isUserValid && password === validPass) {
       // In production/edge, create a base64 session token
       const token = Buffer.from(`${username}:${Date.now()}:agrovision_secret`).toString('base64');
       const response = NextResponse.json({

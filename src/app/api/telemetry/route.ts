@@ -2,18 +2,7 @@ import { NextResponse } from 'next/server';
 import { serverStore } from '@/lib/serverStore';
 
 export async function GET() {
-  const history = serverStore.telemetry;
-  const latest = history[history.length - 1] || {
-    time: '00:00',
-    timestamp: new Date().toISOString(),
-    temperature: 24.0,
-    air_humidity: 62.0,
-    soil_humidity: 68.0,
-    tds: 650.0,
-    ec: 1.3,
-    ph: 6.5,
-    is_anomaly: false
-  };
+  const { history, latest, isSimulated } = serverStore.getLiveTelemetry();
 
   const anomalousSensors: string[] = [];
   if (latest.temperature > 32.0 || latest.temperature < 15.0) anomalousSensors.push('Harorat');
@@ -125,6 +114,8 @@ export async function GET() {
       : 'Barcha mikroklimat parametrlari me\'yorda',
     anomalous_sensors: anomalousSensors,
     metrics: metrics,
-    history: history
+    history: history,
+    is_simulated: isSimulated,
+    sensor_source: isSimulated ? 'dynamic_simulation' : 'physical_esp32'
   });
 }

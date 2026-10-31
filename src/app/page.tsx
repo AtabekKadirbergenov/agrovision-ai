@@ -90,8 +90,8 @@ export default function Home() {
   useEffect(() => {
     if (!user) return;
     loadAllData();
-    // Poll telemetry & plants every 12 seconds for live rover updates
-    const interval = setInterval(loadAllData, 12000);
+    // Poll telemetry every 4 seconds for real-time dynamic updates & live ESP32 sensors
+    const interval = setInterval(loadAllData, 4000);
     return () => clearInterval(interval);
   }, [user]);
 

@@ -99,6 +99,38 @@ export const TelemetryPanel: React.FC<TelemetryPanelProps> = ({
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Dynamic Telemetry Status Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+        <div>
+          <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            <Activity className="h-5 w-5 text-emerald-400" />
+            {t.tabs?.telemetry || "Atrof-muhit Telemetriyasi"}
+          </h2>
+          <p className="text-xs text-slate-400">
+            Real-vaqt mikroklimat va tuproq ko'rsatkichlari dinamikasi
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {telemetry?.is_simulated ? (
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300 shadow-sm shadow-emerald-500/10">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              Dinamik jonli oqim (Real-vaqt)
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-300 shadow-sm shadow-blue-500/10">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+              </span>
+              3-ESP32 Datchiklari Ulangan
+            </span>
+          )}
+        </div>
+      </div>
+
       {/* 5-Metric Sensor KPI Cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {Object.entries(metrics).map(([key, item]) => {

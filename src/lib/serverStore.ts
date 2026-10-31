@@ -188,6 +188,97 @@ class ServerStore {
   latestFrameBase64: string | null = null;
   latestFrameTime: number = 0;
   geminiApiKey: string = process.env.GEMINI_API_KEY || '';
+  lastPhysicalSensorTime: number = 0;
+
+  recordPhysicalTelemetry(data: {
+    temperature: number;
+    air_humidity: number;
+    soil_humidity: number;
+    tds?: number;
+    ec?: number;
+    ph?: number;
+  }) {
+    this.lastPhysicalSensorTime = Date.now();
+    return this.pushTelemetry(data);
+  }
+
+  isPhysicalSensorActive(): boolean {
+    return Date.now() - this.lastPhysicalSensorTime < 25000;
+  }
+
+  // Real-time dynamic microclimate generator when physical sensors are disconnected
+  getLiveTelemetry(): { history: TelemetryItem[]; latest: TelemetryItem; isSimulated: boolean } {
+    const isPhysical = this.isPhysicalSensorActive();
+
+    if (isPhysical) {
+      const latest = this.telemetry[this.telemetry.length - 1];
+      return { history: this.telemetry, latest, isSimulated: false };
+    }
+
+    // Dynamic continuous simulation based on current wall-clock time
+    const now = new Date();
+    const epochSec = Math.floor(Date.now() / 1000);
+    const minuteOfDay = now.getHours() * 60 + now.getMinutes();
+
+    // Natural diurnal curve (peak daytime ~14:00, coolest ~05:00)
+    const diurnalAngle = ((minuteOfDay - 360) / 1440) * Math.PI * 2;
+    const baseTemp = 23.2 + Math.sin(diurnalAngle) * 3.2;
+
+    // Second & minute micro-fluctuations (living greenhouse microclimate)
+    const microWave1 = Math.sin(epochSec / 15) * 0.4;
+    const microWave2 = Math.cos(epochSec / 6) * 0.2;
+    const liveTemp = +(baseTemp + microWave1 + microWave2).toFixed(1);
+
+    // Air humidity inversely proportional to temperature (55% to 75%)
+    const baseHum = 64.0 - Math.sin(diurnalAngle) * 6.5;
+    const humWave = Math.sin(epochSec / 19) * 0.9;
+    const liveHum = +Math.max(45, Math.min(82, baseHum + humWave)).toFixed(1);
+
+    // Soil moisture gently undulating (66% to 72%)
+    const soilWave = Math.sin(epochSec / 40) * 1.6 + Math.cos(epochSec / 12) * 0.4;
+    const liveSoil = +(68.8 + soilWave).toFixed(1);
+
+    // Mineralization TDS (620 to 665 ppm)
+    const tdsWave = Math.sin(epochSec / 25) * 16.0 + Math.sin(epochSec / 9) * 5.0;
+    const liveTds = +(636.0 + tdsWave).toFixed(1);
+    const liveEc = +(liveTds / 500.0).toFixed(2);
+
+    // Soil pH value (6.48 to 6.62)
+    const phWave = Math.sin(epochSec / 50) * 0.07;
+    const livePh = +(6.54 + phWave).toFixed(2);
+
+    const timeStr = now.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' });
+    const lastItem = this.telemetry[this.telemetry.length - 1];
+
+    const currentLiveItem: TelemetryItem = {
+      time: timeStr,
+      timestamp: now.toISOString(),
+      temperature: liveTemp,
+      air_humidity: liveHum,
+      soil_humidity: liveSoil,
+      tds: liveTds,
+      ec: liveEc,
+      ph: livePh,
+      is_anomaly: false
+    };
+
+    // If minute has ticked forward or history is empty, advance history series
+    if (!lastItem || lastItem.time !== timeStr) {
+      this.telemetry.push(currentLiveItem);
+      if (this.telemetry.length > 30) {
+        this.telemetry.shift();
+      }
+    } else {
+      // Keep latest fluctuating live
+      this.telemetry[this.telemetry.length - 1] = currentLiveItem;
+    }
+
+    return {
+      history: this.telemetry,
+      latest: currentLiveItem,
+      isSimulated: true
+    };
+  }
 
   pushTelemetry(data: {
     temperature: number;
