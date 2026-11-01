@@ -4,12 +4,23 @@ import { DISEASE_DICTIONARY, DiseaseInfo } from '@/lib/imageAnalysis';
 
 export async function POST(request: Request) {
   try {
-    const formData = await request.formData();
-    const file = formData.get('image') as File | null;
-    const plantId = (formData.get('plant_id') as string) || 'plant_03';
-    const featuresJson = formData.get('features') as string | null;
+    const contentType = request.headers.get('content-type') || '';
+    let file: File | null = null;
+    let plantId = 'plant_03';
+    let featuresJson: string | null = null;
 
-    if (!file) {
+    if (contentType.includes('application/json')) {
+      const json = await request.json().catch(() => ({}));
+      plantId = json.plant_id || plantId;
+      featuresJson = json.features ? (typeof json.features === 'string' ? json.features : JSON.stringify(json.features)) : null;
+    } else {
+      const formData = await request.formData();
+      file = formData.get('image') as File | null;
+      plantId = (formData.get('plant_id') as string) || plantId;
+      featuresJson = formData.get('features') as string | null;
+    }
+
+    if (!file && !featuresJson) {
       return NextResponse.json({ detail: 'Rasm yuklanmadi (No image file uploaded)' }, { status: 400 });
     }
 
@@ -27,7 +38,7 @@ export async function POST(request: Request) {
       } catch (e) {
         console.warn('Failed to parse client features:', e);
       }
-    } else {
+    } else if (file) {
       // Check filename if preset was used
       const name = file.name.toLowerCase();
       if (name.includes('healthy')) detectedCondition = 'healthy';
@@ -37,8 +48,6 @@ export async function POST(request: Request) {
       else if (name.includes('mold')) detectedCondition = 'leaf_mold';
       else if (name.includes('mite')) detectedCondition = 'mite';
       else {
-        // Inspect raw file buffer for necrotic dark areas or green leaf characteristics
-        const buf = Buffer.from(await file.arrayBuffer());
         // For standard tomato fruit with dark rot lesions (like user screenshot), default to late_blight/anthracnose
         detectedCondition = 'late_blight';
       }
@@ -49,7 +58,7 @@ export async function POST(request: Request) {
     let geminiUsed = false;
 
     // 2. If Gemini API key is available, call Multimodal Vision AI
-    if (geminiKey) {
+    if (geminiKey && file) {
       try {
         const buf = Buffer.from(await file.arrayBuffer());
         const base64Image = buf.toString('base64');

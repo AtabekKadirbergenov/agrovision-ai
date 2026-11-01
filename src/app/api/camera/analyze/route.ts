@@ -4,13 +4,26 @@ import { DISEASE_DICTIONARY, DiseaseInfo } from '@/lib/imageAnalysis';
 
 export async function POST(request: Request) {
   try {
-    const formData = await request.formData();
-    const file = formData.get('image') as File | null;
-    const cameraId = (formData.get('camera_id') as string) || 'camera_1';
-    const cameraName = (formData.get('camera_name') as string) || '1-Kamera (Old Panoramik)';
-    const featuresJson = formData.get('features') as string | null;
+    const contentType = request.headers.get('content-type') || '';
+    let file: File | null = null;
+    let cameraId = 'camera_1';
+    let cameraName = '1-Kamera (Old Panoramik)';
+    let featuresJson: string | null = null;
 
-    if (!file) {
+    if (contentType.includes('application/json')) {
+      const json = await request.json().catch(() => ({}));
+      cameraId = json.camera_id || cameraId;
+      cameraName = json.camera_name || cameraName;
+      featuresJson = json.features ? (typeof json.features === 'string' ? json.features : JSON.stringify(json.features)) : null;
+    } else {
+      const formData = await request.formData();
+      file = formData.get('image') as File | null;
+      cameraId = (formData.get('camera_id') as string) || cameraId;
+      cameraName = (formData.get('camera_name') as string) || cameraName;
+      featuresJson = formData.get('features') as string | null;
+    }
+
+    if (!file && !featuresJson) {
       return NextResponse.json({ error: 'Rasm fayli yuklanmadi' }, { status: 400 });
     }
 
@@ -34,8 +47,8 @@ export async function POST(request: Request) {
     let disease: DiseaseInfo = DISEASE_DICTIONARY[detectedCondition] || DISEASE_DICTIONARY['healthy'];
     let geminiUsed = false;
 
-    // 2. Call Google Gemini Multimodal Vision if key is provided
-    if (geminiKey) {
+    // 2. Call Google Gemini Multimodal Vision if key is provided and file exists
+    if (geminiKey && file) {
       try {
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
