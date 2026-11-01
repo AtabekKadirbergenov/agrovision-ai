@@ -15,6 +15,7 @@ import {
   Check
 } from 'lucide-react';
 import { Language, translations } from '@/lib/i18n';
+import { extractCanvasFeatures } from '@/lib/imageAnalysis';
 import { uploadScan, LiveScanResult, API_BASE_URL } from '@/lib/api';
 
 interface LiveDiagnosticSandboxProps {
@@ -62,7 +63,29 @@ export const LiveDiagnosticSandbox: React.FC<LiveDiagnosticSandboxProps> = ({
     setIsUploading(true);
     setErrorMsg(null);
     try {
-      const result = await uploadScan(selectedFile);
+      let features: any = null;
+      if (previewUrl) {
+        try {
+          const img = new Image();
+          img.src = previewUrl;
+          await new Promise((resolve) => {
+            img.onload = () => resolve(true);
+            img.onerror = () => resolve(false);
+          });
+          const c = document.createElement('canvas');
+          c.width = img.naturalWidth || 300;
+          c.height = img.naturalHeight || 300;
+          const ctx = c.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, c.width, c.height);
+            features = extractCanvasFeatures(ctx, c.width, c.height);
+          }
+        } catch (e) {
+          console.warn('Canvas feature extraction error:', e);
+        }
+      }
+
+      const result = await uploadScan(selectedFile, undefined, features);
       setScanResult(result);
       if (onScanCompleted) onScanCompleted();
     } catch (err: any) {

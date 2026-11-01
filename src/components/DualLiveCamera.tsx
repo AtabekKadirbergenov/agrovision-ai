@@ -23,6 +23,7 @@ import {
   X
 } from 'lucide-react';
 import { Language, translations } from '@/lib/i18n';
+import { extractCanvasFeatures } from '@/lib/imageAnalysis';
 import {
   API_BASE_URL,
   CameraAnalysisResult,
@@ -171,6 +172,7 @@ export const DualLiveCamera: React.FC<DualLiveCameraProps> = ({ currentLang }) =
 
     try {
       let imageBlob: Blob | null = null;
+      let features: any = null;
       const currentMode = streamModes[camId];
 
       if (currentMode === 'webcam') {
@@ -182,6 +184,7 @@ export const DualLiveCamera: React.FC<DualLiveCameraProps> = ({ currentLang }) =
           const ctx = canvas.getContext('2d');
           if (ctx) {
             ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+            features = extractCanvasFeatures(ctx, canvas.width, canvas.height);
             imageBlob = await new Promise<Blob | null>(r => canvas.toBlob(r, 'image/jpeg', 0.92));
           }
         }
@@ -224,8 +227,32 @@ export const DualLiveCamera: React.FC<DualLiveCameraProps> = ({ currentLang }) =
         throw new Error("Kamera kadrini olib bo'lmadi.");
       }
 
-      // Send to FastAPI dual AI endpoint
-      const result = await analyzeCameraSnapshot(imageBlob, camId, cam.name);
+      // If features were not extracted directly from webcam, analyze via offscreen canvas
+      if (!features) {
+        try {
+          const img = new Image();
+          const objUrl = URL.createObjectURL(imageBlob);
+          img.src = objUrl;
+          await new Promise((resolve) => {
+            img.onload = () => resolve(true);
+            img.onerror = () => resolve(false);
+          });
+          const c = document.createElement('canvas');
+          c.width = img.naturalWidth || 300;
+          c.height = img.naturalHeight || 300;
+          const ctx = c.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, c.width, c.height);
+            features = extractCanvasFeatures(ctx, c.width, c.height);
+          }
+          URL.revokeObjectURL(objUrl);
+        } catch (e) {
+          console.warn("Canvas feature extraction error:", e);
+        }
+      }
+
+      // Send to dual AI endpoint
+      const result = await analyzeCameraSnapshot(imageBlob, camId, cam.name, features);
       setAnalysisResults(prev => ({ ...prev, [camId]: result }));
     } catch (err: any) {
       console.error("Camera analysis error:", err);

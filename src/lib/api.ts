@@ -143,11 +143,14 @@ export async function getTelemetry(): Promise<TelemetryResponse> {
   return res.json();
 }
 
-export async function uploadScan(file: File | Blob, plantId?: string): Promise<LiveScanResult> {
+export async function uploadScan(file: File | Blob, plantId?: string, features?: any): Promise<LiveScanResult> {
   const formData = new FormData();
   formData.append("image", file);
   if (plantId) {
     formData.append("plant_id", plantId);
+  }
+  if (features) {
+    formData.append("features", JSON.stringify(features));
   }
 
   const res = await fetch(`${API_BASE_URL}/api/scan`, {
@@ -187,12 +190,16 @@ export interface CameraAnalysisResult {
 export async function analyzeCameraSnapshot(
   blob: Blob,
   cameraId: string,
-  cameraName: string
+  cameraName: string,
+  features?: any
 ): Promise<CameraAnalysisResult> {
   const formData = new FormData();
   formData.append("image", blob, `camera_${cameraId}.jpg`);
   formData.append("camera_id", cameraId);
   formData.append("camera_name", cameraName);
+  if (features) {
+    formData.append("features", JSON.stringify(features));
+  }
 
   const res = await fetch(`${API_BASE_URL}/api/camera/analyze`, {
     method: "POST",
