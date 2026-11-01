@@ -102,7 +102,25 @@ export const DualLiveCamera: React.FC<DualLiveCameraProps> = ({ currentLang }) =
 
   useEffect(() => {
     getGeminiKeyStatus().then(setGeminiKeyStatus).catch(() => {});
+    try {
+      const saved1 = localStorage.getItem('agrovision_cam1_url');
+      const saved2 = localStorage.getItem('agrovision_cam2_url');
+      if (saved1 || saved2) {
+        setStreamUrls(prev => ({
+          camera_1: saved1 || prev.camera_1,
+          camera_2: saved2 || prev.camera_2
+        }));
+      }
+    } catch (e) {}
   }, []);
+
+  const handleSaveStreamUrl = (camId: string) => {
+    try {
+      localStorage.setItem(`agrovision_${camId}_url`, streamUrls[camId]);
+    } catch (e) {}
+    setIsConfigOpen(prev => ({ ...prev, [camId]: false }));
+    setErrorMessages(prev => ({ ...prev, [camId]: '' }));
+  };
 
   const handleSaveGeminiKey = async () => {
     if (!inputKey.trim()) return;
@@ -448,23 +466,36 @@ export const DualLiveCamera: React.FC<DualLiveCameraProps> = ({ currentLang }) =
                 <div className="mt-2.5 rounded-xl border border-slate-700/80 bg-slate-900/90 p-3 text-xs flex flex-col gap-2">
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-slate-300">ESP32-CAM IP Manzili:</span>
-                    <span className="text-[10px] text-slate-500">Standart: port 81/stream</span>
+                    <span className="text-[10px] text-slate-400">Telefon hotspoti: odatda 192.168.43.x:81/stream</span>
                   </div>
                   <div className="flex gap-2">
                     <input
                       type="text"
                       value={streamUrls[camId]}
                       onChange={(e) => setStreamUrls(prev => ({ ...prev, [camId]: e.target.value }))}
-                      placeholder="http://192.168.1.150:81/stream"
+                      placeholder="http://192.168.43.100:81/stream"
                       className="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1 text-slate-200 font-mono text-xs focus:border-emerald-500 focus:outline-none"
                     />
                     <button
                       type="button"
-                      onClick={() => setIsConfigOpen(prev => ({ ...prev, [camId]: false }))}
+                      onClick={() => handleSaveStreamUrl(camId)}
                       className="rounded-lg bg-emerald-600 px-3 py-1 font-semibold text-white hover:bg-emerald-500 transition"
                     >
                       Saqlash
                     </button>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-800 text-[11px]">
+                    <a
+                      href={streamUrls[camId]}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-emerald-400 hover:text-emerald-300 underline flex items-center gap-1 font-semibold"
+                    >
+                      🔗 Oqimni yangi tabda ochib tekshirish
+                    </a>
+                    <span className="text-slate-400 text-[10px]">
+                      Brauzerda «Insecure content» ga ruxsat bering
+                    </span>
                   </div>
                 </div>
               )}
@@ -543,16 +574,38 @@ export const DualLiveCamera: React.FC<DualLiveCameraProps> = ({ currentLang }) =
 
               {/* Error Notice if stream unreachable */}
               {errorMsg && (
-                <div className="mt-2 flex items-center gap-2 rounded-lg bg-amber-500/10 border border-amber-500/30 p-2 text-xs text-amber-300">
-                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
-                  <span className="flex-1">{errorMsg}</span>
-                  <button
-                    type="button"
-                    onClick={() => handleModeChange(camId, 'demo')}
-                    className="rounded bg-amber-500/20 px-2 py-0.5 text-[11px] font-semibold text-amber-200 hover:bg-amber-500/30"
-                  >
-                    Demo rejim
-                  </button>
+                <div className="mt-2.5 flex flex-col gap-2 rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-300">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+                    <span className="flex-1 font-medium">{errorMsg}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-amber-500/20">
+                    <button
+                      type="button"
+                      onClick={() => setIsConfigOpen(prev => ({ ...prev, [camId]: true }))}
+                      className="rounded-lg bg-emerald-600/30 border border-emerald-500/40 px-2.5 py-1 text-[11px] font-semibold text-emerald-200 hover:bg-emerald-600/50 transition"
+                    >
+                      ⚙️ IP Manzilini Kiritish
+                    </button>
+                    <a
+                      href={streamUrls[camId]}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-lg bg-slate-800 border border-slate-700 px-2.5 py-1 text-[11px] font-semibold text-slate-200 hover:text-white transition"
+                    >
+                      🔗 Oqimni Yangi Tabda Ochish
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => handleModeChange(camId, 'demo')}
+                      className="rounded-lg bg-amber-500/20 px-2.5 py-1 text-[11px] font-semibold text-amber-200 hover:bg-amber-500/30 transition"
+                    >
+                      Demo rejim
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-normal">
+                    💡 <b>Tushuntirish:</b> Telefon hotspotida ESP32 IP manzili <code>192.168.43.x</code> bo'ladi (Telefon sozlamalari &rarr; Hotspot &rarr; Ulangan qurilmalar orqali aniqlang). Agar brauzer videoni yuklamasa, manzil satridagi qulf/sozlama belgisini bosib <b>«Insecure content»</b> ni <b>«Allow»</b> qiling.
+                  </p>
                 </div>
               )}
 
