@@ -128,6 +128,16 @@ export const DualLiveCamera: React.FC<DualLiveCameraProps> = ({ currentLang }) =
     camera_2: useRef<HTMLVideoElement | null>(null)
   };
 
+  const espImgRefs = {
+    camera_1: useRef<HTMLImageElement | null>(null),
+    camera_2: useRef<HTMLImageElement | null>(null)
+  };
+
+  const [capturedThumbnails, setCapturedThumbnails] = useState<Record<string, string>>({
+    camera_1: '',
+    camera_2: ''
+  });
+
   // Setup webcam if selected
   const startWebcam = async (camId: string) => {
     try {
@@ -189,23 +199,33 @@ export const DualLiveCamera: React.FC<DualLiveCameraProps> = ({ currentLang }) =
           }
         }
       } else if (currentMode === 'live') {
-        // 1. Fetch real snapshot via backend proxy (eliminates browser CORS restrictions)
-        try {
-          const proxyUrl = `${API_BASE_URL}/api/camera/proxy-capture?stream_url=${encodeURIComponent(streamUrls[camId])}`;
-          const resp = await fetch(proxyUrl);
-          if (resp.ok) {
-            imageBlob = await resp.blob();
+        // 1. First, attempt instant client canvas capture from live streaming <img>
+        const imgEl = espImgRefs[camId as keyof typeof espImgRefs]?.current;
+        if (imgEl && (imgEl.naturalWidth > 0 || imgEl.clientWidth > 0)) {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = imgEl.naturalWidth || imgEl.clientWidth || 640;
+            canvas.height = imgEl.naturalHeight || imgEl.clientHeight || 480;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height);
+              features = extractCanvasFeatures(ctx, canvas.width, canvas.height);
+              imageBlob = await new Promise<Blob | null>(r => canvas.toBlob(r, 'image/jpeg', 0.92));
+            }
+          } catch (canvasErr) {
+            console.warn("Direct canvas snapshot of stream failed (CORS/taint):", canvasErr);
           }
-        } catch (e) {
-          console.warn("Proxy capture failed:", e);
         }
 
-        // 2. Direct ESP32 /capture endpoint attempt
+        // 2. Direct ESP32 /capture endpoint from user's local network browser session
         if (!imageBlob) {
           try {
             const baseUrl = streamUrls[camId].replace('/stream', '').replace(':81', '');
             const captureUrl = `${baseUrl}/capture`;
-            const resp = await fetch(captureUrl, { mode: 'cors' });
+            const controller = new AbortController();
+            const tid = setTimeout(() => controller.abort(), 3000);
+            const resp = await fetch(captureUrl, { signal: controller.signal });
+            clearTimeout(tid);
             if (resp.ok) {
               imageBlob = await resp.blob();
             }
@@ -214,8 +234,21 @@ export const DualLiveCamera: React.FC<DualLiveCameraProps> = ({ currentLang }) =
           }
         }
 
+        // 3. Fallback to serverless backend proxy
         if (!imageBlob) {
-          throw new Error("Kameradan kadr olib bo'lmadi. Kamera yoqilganligi va IP manzili to'g'riligini tekshiring.");
+          try {
+            const proxyUrl = `${API_BASE_URL}/api/camera/proxy-capture?stream_url=${encodeURIComponent(streamUrls[camId])}`;
+            const resp = await fetch(proxyUrl);
+            if (resp.ok) {
+              imageBlob = await resp.blob();
+            }
+          } catch (e) {
+            console.warn("Proxy capture failed:", e);
+          }
+        }
+
+        if (!imageBlob) {
+          throw new Error("ESP32 kameradan jonli kadr olib bo'lmadi. Qurilma yoqilganligini, Wi-Fi («karsu») aloqasini va IP manzilini tekshiring.");
         }
       } else {
         // Demo mode: load botanical sample
@@ -226,6 +259,10 @@ export const DualLiveCamera: React.FC<DualLiveCameraProps> = ({ currentLang }) =
       if (!imageBlob) {
         throw new Error("Kamera kadrini olib bo'lmadi.");
       }
+
+      // Immediately store the actual captured frame so the result thumbnail shows this exact photo
+      const localSnapUrl = URL.createObjectURL(imageBlob);
+      setCapturedThumbnails(prev => ({ ...prev, [camId]: localSnapUrl }));
 
       // If features were not extracted directly from webcam, analyze via offscreen canvas
       if (!features) {
@@ -437,8 +474,10 @@ export const DualLiveCamera: React.FC<DualLiveCameraProps> = ({ currentLang }) =
                 {/* 1. ESP32 Stream Mode */}
                 {currentMode === 'live' && (
                   <img
+                    ref={espImgRefs[camId as keyof typeof espImgRefs]}
                     src={streamUrls[camId]}
                     alt={`ESP32 Live Stream ${camId}`}
+                    crossOrigin="anonymous"
                     className="h-full w-full object-cover"
                     onError={() => {
                       setErrorMessages(prev => ({
@@ -538,7 +577,7 @@ export const DualLiveCamera: React.FC<DualLiveCameraProps> = ({ currentLang }) =
                     <div className="flex items-start gap-3 border-b border-slate-800 pb-3">
                       <div className="relative h-16 w-20 shrink-0 overflow-hidden rounded-lg border border-slate-700 bg-black">
                         <img
-                          src={`${API_BASE_URL}${result.image_url}`}
+                          src={capturedThumbnails[camId] || (result.image_url?.startsWith('data:') ? result.image_url : `${API_BASE_URL}${result.image_url}`)}
                           alt="Snapshot"
                           className="h-full w-full object-cover"
                         />

@@ -56,14 +56,24 @@ export async function POST(request: Request) {
     const geminiKey = serverStore.geminiApiKey || process.env.GEMINI_API_KEY;
     let disease: DiseaseInfo = DISEASE_DICTIONARY[detectedCondition] || DISEASE_DICTIONARY['late_blight'];
     let geminiUsed = false;
+    let imageUrl = '/static/leaf_blight_late.jpg';
+    let base64Image = '';
+    let mimeType = 'image/jpeg';
 
-    // 2. If Gemini API key is available, call Multimodal Vision AI
-    if (geminiKey && file) {
+    if (file) {
       try {
         const buf = Buffer.from(await file.arrayBuffer());
-        const base64Image = buf.toString('base64');
-        const mimeType = file.type || 'image/jpeg';
+        base64Image = buf.toString('base64');
+        mimeType = file.type || 'image/jpeg';
+        imageUrl = `data:${mimeType};base64,${base64Image}`;
+      } catch (e) {
+        console.warn('Failed to read scan file buffer:', e);
+      }
+    }
 
+    // 2. If Gemini API key is available, call Multimodal Vision AI
+    if (geminiKey && base64Image) {
+      try {
         const geminiRes = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
           {
@@ -137,7 +147,7 @@ Javobingni FAQAT quyidagi toza JSON formatida ber (hech qanday qo'shimcha so'zsi
 
     const result = {
       plant_id: plantId,
-      image_url: '/static/leaf_blight_late.jpg',
+      image_url: imageUrl,
       scanned_at: now,
       cnn_analysis: {
         predicted_class: disease.className,

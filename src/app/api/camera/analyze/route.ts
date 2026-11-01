@@ -46,15 +46,25 @@ export async function POST(request: Request) {
     const geminiKey = serverStore.geminiApiKey || process.env.GEMINI_API_KEY;
     let disease: DiseaseInfo = DISEASE_DICTIONARY[detectedCondition] || DISEASE_DICTIONARY['healthy'];
     let geminiUsed = false;
+    let imageUrl = '/static/leaf_healthy.jpg';
+    let base64Image = '';
+    let mimeType = 'image/jpeg';
 
-    // 2. Call Google Gemini Multimodal Vision if key is provided and file exists
-    if (geminiKey && file) {
+    if (file) {
       try {
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
-        const base64Image = buffer.toString('base64');
-        const mimeType = file.type || 'image/jpeg';
+        mimeType = file.type || 'image/jpeg';
+        base64Image = buffer.toString('base64');
+        imageUrl = `data:${mimeType};base64,${base64Image}`;
+      } catch (e) {
+        console.warn('Failed to read file buffer:', e);
+      }
+    }
 
+    // 2. Call Google Gemini Multimodal Vision if key is provided and file exists
+    if (geminiKey && base64Image) {
+      try {
         const geminiRes = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
           {
@@ -127,7 +137,7 @@ Javobingni FAQAT quyidagi toza JSON formatida ber:
       status: 'success',
       camera_id: cameraId,
       camera_name: cameraName,
-      image_url: '/static/leaf_healthy.jpg',
+      image_url: imageUrl,
       scanned_at: now,
       cnn: {
         predicted_class: disease.className,

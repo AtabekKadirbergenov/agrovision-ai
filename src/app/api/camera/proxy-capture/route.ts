@@ -44,6 +44,9 @@ export async function GET(request: Request) {
     });
   }
 
-  // 3. Fallback to default demo leaf
-  return NextResponse.redirect(new URL('/static/leaf_healthy.jpg', request.url));
+  // 3. If unreachable and no cloud frame, return error instead of fake static image
+  return NextResponse.json(
+    { error: "ESP32 kameraga ulanib bo'lmadi. Qurilma yoqilganligini va Wi-Fi aloqasini tekshiring." },
+    { status: 503 }
+  );
 }

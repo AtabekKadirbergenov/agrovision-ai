@@ -138,14 +138,16 @@ export function extractCanvasFeatures(ctx: CanvasRenderingContext2D, width: numb
   const yellowRatio = yellowCount / sampled;
   const necroticRatio = necroticCount / sampled;
   const skinRatio = skinCount / sampled;
+  const plantTissueRatio = greenRatio + yellowRatio;
 
-  // 1. Human face / Room check
-  if (skinRatio > 0.18 && greenRatio < 0.10) {
+  // 1. Human / Indoor / Non-Plant Check:
+  // If skin tones are visible (face, hands) or there is practically zero plant matter (green/yellow < 5%)
+  if (skinRatio > 0.06 || plantTissueRatio < 0.05 || (skinRatio > 0.03 && greenRatio < 0.04)) {
     return {
       isPlant: false,
       isHumanOrRoom: true,
       condition: 'non_plant',
-      confidence: +(0.88 + skinRatio * 0.1).toFixed(2),
+      confidence: +(0.91 + Math.min(skinRatio, 0.08)).toFixed(2),
       greenRatio,
       skinRatio,
       necroticRatio,
@@ -153,9 +155,9 @@ export function extractCanvasFeatures(ctx: CanvasRenderingContext2D, width: numb
     };
   }
 
-  // 2. Plant / Fruit check:
-  // If necrotic black lesions are detected (Tomato fruit rot / late blight as in user screenshot!):
-  if (necroticRatio > 0.025 || (necroticRatio > 0.015 && (greenRatio > 0.15 || yellowRatio > 0.08))) {
+  // 2. Real Plant Pathology Checks (Only valid when real plant tissue is present: plantTissueRatio >= 0.05):
+  // Necrotic dark rot spots (Late Blight / Fruit Anthracnose - like the sick tomato with black lesions)
+  if (necroticRatio > 0.02 && plantTissueRatio > 0.12) {
     return {
       isPlant: true,
       isHumanOrRoom: false,
@@ -168,8 +170,8 @@ export function extractCanvasFeatures(ctx: CanvasRenderingContext2D, width: numb
     };
   }
 
-  // Chlorosis (yellowing)
-  if (yellowRatio > 0.18 && greenRatio < 0.35) {
+  // Chlorosis (Microelement deficiency - yellowing leaves)
+  if (yellowRatio > 0.16 && greenRatio < 0.38) {
     return {
       isPlant: true,
       isHumanOrRoom: false,
@@ -182,8 +184,8 @@ export function extractCanvasFeatures(ctx: CanvasRenderingContext2D, width: numb
     };
   }
 
-  // Early blight
-  if (necroticRatio > 0.012 && yellowRatio > 0.05) {
+  // Early blight (Alternaria - concentric target spots)
+  if (necroticRatio > 0.012 && yellowRatio > 0.05 && plantTissueRatio > 0.15) {
     return {
       isPlant: true,
       isHumanOrRoom: false,
@@ -196,13 +198,13 @@ export function extractCanvasFeatures(ctx: CanvasRenderingContext2D, width: numb
     };
   }
 
-  // If skin ratio is high and almost no green/yellow: non-plant
-  if (skinRatio > 0.14 && (greenRatio + yellowRatio) < 0.08) {
+  // Leaf mold / Spider mites indicator
+  if (yellowRatio > 0.10 && necroticRatio > 0.008 && plantTissueRatio > 0.20) {
     return {
-      isPlant: false,
-      isHumanOrRoom: true,
-      condition: 'non_plant',
-      confidence: 0.93,
+      isPlant: true,
+      isHumanOrRoom: false,
+      condition: 'leaf_mold',
+      confidence: 0.88,
       greenRatio,
       skinRatio,
       necroticRatio,
@@ -210,7 +212,7 @@ export function extractCanvasFeatures(ctx: CanvasRenderingContext2D, width: numb
     };
   }
 
-  // Default: Healthy plant
+  // Default: Healthy plant foliage
   return {
     isPlant: true,
     isHumanOrRoom: false,
