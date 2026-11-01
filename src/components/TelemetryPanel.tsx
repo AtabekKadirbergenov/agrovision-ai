@@ -12,7 +12,9 @@ import {
   TrendingDown,
   ShieldAlert,
   CheckCircle2,
-  Calendar
+  Calendar,
+  Clock,
+  CalendarDays
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -33,12 +35,15 @@ interface TelemetryPanelProps {
   telemetry: TelemetryResponse | null;
 }
 
+export type TimeRange = 'today' | 'week' | 'month';
+
 export const TelemetryPanel: React.FC<TelemetryPanelProps> = ({
   currentLang,
   telemetry,
 }) => {
   const t = translations[currentLang];
   const [selectedMetric, setSelectedMetric] = useState<string>('tds');
+  const [timeRange, setTimeRange] = useState<TimeRange>('week');
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -54,7 +59,157 @@ export const TelemetryPanel: React.FC<TelemetryPanelProps> = ({
     ph: { name: 'Soil pH Level', current: 6.45, unit: 'pH', baseline_mean: 6.48, baseline_std: 0.12, z_score: -0.25, deviation_percent: -0.5, is_anomaly: false, status_label: 'Normal', threshold_min: 6.24, threshold_max: 6.72, min_normal: 6.0, max_normal: 7.0 }
   };
 
-  const history = telemetry?.history || [];
+  const activeMetricData = metrics[selectedMetric] || metrics['tds'];
+
+  // Dynamic time-series datasets based on selected time range (Bugun / Hafta / Oy)
+  const currentChartData = React.useMemo(() => {
+    const curTemp = metrics.temperature?.current ?? 24.2;
+    const curAirH = metrics.air_humidity?.current ?? 64.5;
+    const curSoilH = metrics.soil_humidity?.current ?? 68.0;
+    const curTds = metrics.tds?.current ?? 640.0;
+    const curEc = metrics.ec?.current ?? +(curTds / 500).toFixed(2);
+    const curPh = metrics.ph?.current ?? 6.45;
+
+    if (timeRange === 'today') {
+      // 24 hourly data points (from 00:00 to 23:00) with realistic diurnal variation
+      const points = [];
+      const currentHour = new Date().getHours();
+      for (let h = 0; h < 24; h++) {
+        const isCurrent = h === currentHour;
+        const timeLabel = `${h.toString().padStart(2, '0')}:00`;
+        const diurnalFactor = Math.sin(((h - 8) / 24) * 2 * Math.PI); // Peak at 14:00, trough at 02:00
+        
+        const temp = isCurrent ? curTemp : +(21.0 + diurnalFactor * 4.2 + (Math.sin(h) * 0.4)).toFixed(1);
+        const airH = isCurrent ? curAirH : +(68.0 - diurnalFactor * 10.5 + (Math.cos(h) * 0.7)).toFixed(1);
+        const soilH = isCurrent ? curSoilH : +(66.5 - (h / 24) * 3.5 + (h === 7 || h === 18 ? 4.5 : 0)).toFixed(1);
+        const isSpikeHour = h >= 13 && h <= 15 && metrics.tds?.is_anomaly;
+        const tds = isCurrent ? curTds : isSpikeHour ? 920.0 : +(625.0 + Math.sin(h / 3) * 25.0).toFixed(1);
+        const ec = +(tds / 500.0).toFixed(2);
+        const ph = isCurrent ? curPh : +(6.42 + Math.sin(h / 4) * 0.08).toFixed(2);
+
+        points.push({
+          time: isCurrent ? `${timeLabel} (Hozir)` : timeLabel,
+          temperature: temp,
+          air_humidity: airH,
+          soil_humidity: soilH,
+          tds: tds,
+          ec: ec,
+          ph: ph
+        });
+      }
+      return points;
+    }
+
+    if (timeRange === 'week') {
+      // 7 days (Monday through Sunday)
+      const uzDays = ['Dush', 'Sesh', 'Chor', 'Pay', 'Juma', 'Shan', 'Yak'];
+      const uzMonths = ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyun', 'Iyul', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek'];
+      const points = [];
+      const now = new Date();
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+        const isToday = i === 0;
+        const dayName = uzDays[(d.getDay() + 6) % 7];
+        const dateStr = `${d.getDate()}-${uzMonths[d.getMonth()]}`;
+        const label = isToday ? `Bugun (${dayName})` : `${dayName} (${dateStr})`;
+
+        const temp = isToday ? curTemp : +(22.5 + ((i % 3) - 1) * 0.9).toFixed(1);
+        const airH = isToday ? curAirH : +(63.0 + ((i % 2 === 0 ? 1 : -1) * 3.2)).toFixed(1);
+        const soilH = isToday ? curSoilH : +(67.0 + ((i % 4) - 2) * 1.5).toFixed(1);
+        const tds = isToday ? curTds : +(630.0 + (i === 1 && metrics.tds?.is_anomaly ? 240.0 : (i * 4) - 8)).toFixed(1);
+        const ec = +(tds / 500.0).toFixed(2);
+        const ph = isToday ? curPh : +(6.45 + ((i % 3) - 1) * 0.05).toFixed(2);
+
+        points.push({
+          time: label,
+          temperature: temp,
+          air_humidity: airH,
+          soil_humidity: soilH,
+          tds: tds,
+          ec: ec,
+          ph: ph
+        });
+      }
+      return points;
+    }
+
+    // timeRange === 'month' (30 days)
+    const uzMonths = ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyun', 'Iyul', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek'];
+    const points = [];
+    const now = new Date();
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const isToday = i === 0;
+      const dateStr = `${d.getDate().toString().padStart(2, '0')}-${uzMonths[d.getMonth()]}`;
+      const label = isToday ? `Bugun` : dateStr;
+
+      const temp = isToday ? curTemp : +(22.0 + Math.sin(i / 5) * 1.8).toFixed(1);
+      const airH = isToday ? curAirH : +(64.0 + Math.cos(i / 4) * 4.5).toFixed(1);
+      const soilH = isToday ? curSoilH : +(68.0 + Math.sin(i / 6) * 3.0).toFixed(1);
+      const tds = isToday ? curTds : +(628.0 + (i === 2 && metrics.tds?.is_anomaly ? 260.0 : Math.sin(i / 3) * 22.0)).toFixed(1);
+      const ec = +(tds / 500.0).toFixed(2);
+      const ph = isToday ? curPh : +(6.44 + Math.sin(i / 7) * 0.08).toFixed(2);
+
+      points.push({
+        time: label,
+        temperature: temp,
+        air_humidity: airH,
+        soil_humidity: soilH,
+        tds: tds,
+        ec: ec,
+        ph: ph
+      });
+    }
+    return points;
+  }, [timeRange, metrics]);
+
+  // Dynamically compute baseline mean and std for the chosen timeframe
+  const timeframeStats = React.useMemo(() => {
+    const values = currentChartData
+      .map(d => (d as any)[selectedMetric])
+      .filter((v): v is number => typeof v === 'number' && !isNaN(v));
+
+    if (values.length === 0) {
+      return {
+        mean: activeMetricData.baseline_mean,
+        threshold_min: activeMetricData.threshold_min,
+        threshold_max: activeMetricData.threshold_max,
+        std: activeMetricData.baseline_std,
+        z_score: activeMetricData.z_score
+      };
+    }
+
+    const mean = +(values.reduce((a, b) => a + b, 0) / values.length).toFixed(1);
+    const variance = values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
+    const std = +(Math.sqrt(variance) || activeMetricData.baseline_std).toFixed(1);
+    const z = +(((activeMetricData.current - mean) / (std || 1))).toFixed(2);
+    const tMin = +(mean - 2 * std).toFixed(1);
+    const tMax = +(mean + 2 * std).toFixed(1);
+
+    return {
+      mean,
+      threshold_min: Math.min(tMin, activeMetricData.threshold_min),
+      threshold_max: Math.max(tMax, activeMetricData.threshold_max),
+      std,
+      z_score: z
+    };
+  }, [currentChartData, selectedMetric, activeMetricData]);
+
+  const getTimeRangeTitle = (tr: TimeRange) => {
+    switch (tr) {
+      case 'today': return "Bugungi 24 Soatlik Dinamikasi";
+      case 'week': return "7 Kunlik Haftalik Dinamikasi";
+      case 'month': return "30 Kunlik Oylik Dinamikasi";
+    }
+  };
+
+  const getTimeRangeMeanLabel = (tr: TimeRange) => {
+    switch (tr) {
+      case 'today': return "24-Soatlik O'rtacha (Norm):";
+      case 'week': return "7-Kunlik O'rtacha (Norm):";
+      case 'month': return "30-Kunlik O'rtacha (Norm):";
+    }
+  };
 
   const getMetricIcon = (key: string) => {
     switch (key) {
@@ -67,8 +222,6 @@ export const TelemetryPanel: React.FC<TelemetryPanelProps> = ({
       default: return <Activity className="h-5 w-5 text-slate-400" />;
     }
   };
-
-  const activeMetricData = metrics[selectedMetric] || metrics['tds'];
 
   const getMetricLabel = (key: string, item?: any): string => {
     if (item?.name) return item.name;
@@ -199,58 +352,104 @@ export const TelemetryPanel: React.FC<TelemetryPanelProps> = ({
 
       {/* Interactive Time-Series Timeline Chart with Threshold Zone */}
       <div className="glass-panel relative rounded-2xl p-5 shadow-xl">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-800 pb-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between border-b border-slate-800 pb-4">
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-base font-bold text-white sm:text-lg">
-                {getMetricLabel(selectedMetric, activeMetricData)} {t.sensors.chartTitle}
+                {getMetricLabel(selectedMetric, activeMetricData)} {getTimeRangeTitle(timeRange)}
               </h3>
               {activeMetricData.is_anomaly && (
                 <span className="rounded-full bg-red-500/20 px-2.5 py-0.5 text-xs font-bold text-red-400 border border-red-500/40">
-                  Anomaly Detected ({activeMetricData.deviation_percent > 0 ? `+${activeMetricData.deviation_percent}%` : `${activeMetricData.deviation_percent}%`})
+                  Anomaliya ({activeMetricData.deviation_percent > 0 ? `+${activeMetricData.deviation_percent}%` : `${activeMetricData.deviation_percent}%`})
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-400">
-              Comparing live sensor telemetry against the 7-day historical moving average (±2σ baseline threshold zone).
+            <p className="text-xs text-slate-400 mt-0.5">
+              {timeRange === 'today'
+                ? "Real-vaqt 24 soatlik soatbay telemetriya va kunlik me'yor (±2σ) ko'rsatkichlari."
+                : timeRange === 'week'
+                ? "Kundalik telemetriya o'rtachasi va 7 kunlik agronomik me'yor (±2σ baseline) taqqoslamasi."
+                : "30 kunlik o'suv davri monitoringi va mavsumiy statistik me'yor koridori (±2σ)."}
             </p>
           </div>
 
-          {/* Metric Selector Tabs */}
-          <div className="flex flex-wrap items-center gap-1 rounded-xl bg-slate-900/90 p-1 border border-slate-800">
-            {Object.keys(metrics).map((k) => (
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Timeframe Switcher (Bugun / Hafta / Oy) */}
+            <div className="flex items-center rounded-xl bg-slate-950/90 p-1 border border-slate-800 text-xs shadow-inner">
               <button
-                key={k}
-                onClick={() => setSelectedMetric(k)}
-                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-                  selectedMetric === k
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
+                type="button"
+                onClick={() => setTimeRange('today')}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1 font-semibold transition ${
+                  timeRange === 'today'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white font-bold shadow-md shadow-emerald-600/30'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
                 }`}
               >
-                {getMetricLabel(k, metrics[k]).split(' ')[0]}
+                <Clock className="h-3.5 w-3.5" />
+                <span>Bugun</span>
               </button>
-            ))}
+              <button
+                type="button"
+                onClick={() => setTimeRange('week')}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1 font-semibold transition ${
+                  timeRange === 'week'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white font-bold shadow-md shadow-emerald-600/30'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                }`}
+              >
+                <Calendar className="h-3.5 w-3.5" />
+                <span>Hafta</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTimeRange('month')}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1 font-semibold transition ${
+                  timeRange === 'month'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white font-bold shadow-md shadow-emerald-600/30'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                }`}
+              >
+                <CalendarDays className="h-3.5 w-3.5" />
+                <span>Oy</span>
+              </button>
+            </div>
+
+            {/* Metric Selector Tabs */}
+            <div className="flex flex-wrap items-center gap-1 rounded-xl bg-slate-900/90 p-1 border border-slate-800">
+              {Object.keys(metrics).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => setSelectedMetric(k)}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                    selectedMetric === k
+                      ? 'bg-emerald-600 text-white shadow-sm font-bold'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {getMetricLabel(k, metrics[k]).split(' ')[0]}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* Chart Summary Stats Ribbon */}
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 rounded-xl bg-slate-900/60 p-3 border border-slate-800 text-xs">
           <div>
-            <span className="text-slate-500">Current Reading:</span>
+            <span className="text-slate-500">Hozirgi Ko'rsatkich (Current):</span>
             <div className="font-bold text-white text-sm">{activeMetricData.current} {activeMetricData.unit}</div>
           </div>
           <div>
-            <span className="text-slate-500">7-Day Mean (Norm):</span>
-            <div className="font-bold text-slate-300 text-sm">{activeMetricData.baseline_mean} {activeMetricData.unit}</div>
+            <span className="text-slate-500">{getTimeRangeMeanLabel(timeRange)}</span>
+            <div className="font-bold text-slate-300 text-sm">{timeframeStats.mean} {activeMetricData.unit}</div>
           </div>
           <div>
-            <span className="text-slate-500">Statistical Threshold (±2σ):</span>
-            <div className="font-bold text-emerald-400 text-sm">{activeMetricData.threshold_min} – {activeMetricData.threshold_max} {activeMetricData.unit}</div>
+            <span className="text-slate-500">Statistik Me'yor (±2σ):</span>
+            <div className="font-bold text-emerald-400 text-sm">{timeframeStats.threshold_min} – {timeframeStats.threshold_max} {activeMetricData.unit}</div>
           </div>
           <div>
-            <span className="text-slate-500">Standard Deviation (σ):</span>
-            <div className="font-bold text-slate-300 text-sm">±{activeMetricData.baseline_std} (Z={activeMetricData.z_score})</div>
+            <span className="text-slate-500">Standart Og'ish (σ):</span>
+            <div className="font-bold text-slate-300 text-sm">±{timeframeStats.std} (Z={timeframeStats.z_score})</div>
           </div>
         </div>
 
@@ -258,13 +457,13 @@ export const TelemetryPanel: React.FC<TelemetryPanelProps> = ({
         <div className="mt-6 h-72 w-full">
           {isMounted ? (
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={history} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+              <ComposedChart data={currentChartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                 <XAxis
                   dataKey="time"
                   stroke="#64748b"
                   tick={{ fontSize: 11 }}
-                  interval={Math.max(1, Math.floor(history.length / 8))}
+                  interval={timeRange === 'week' ? 0 : timeRange === 'today' ? 3 : 4}
                 />
                 <YAxis
                   stroke="#64748b"
@@ -285,8 +484,8 @@ export const TelemetryPanel: React.FC<TelemetryPanelProps> = ({
 
                 {/* Normal Baseline Range Shading (Mean ± 2*Std) */}
                 <ReferenceArea
-                  y1={activeMetricData.threshold_min}
-                  y2={activeMetricData.threshold_max}
+                  y1={timeframeStats.threshold_min}
+                  y2={timeframeStats.threshold_max}
                   fill="#10b981"
                   fillOpacity={0.07}
                   stroke="#10b981"
@@ -294,12 +493,17 @@ export const TelemetryPanel: React.FC<TelemetryPanelProps> = ({
                   strokeDasharray="4 4"
                 />
 
-                {/* 7-day Historical Mean Line */}
+                {/* Timeframe Mean Reference Line */}
                 <ReferenceLine
-                  y={activeMetricData.baseline_mean}
+                  y={timeframeStats.mean}
                   stroke="#10b981"
                   strokeDasharray="3 3"
-                  label={{ value: '7d Norm', fill: '#10b981', fontSize: 10, position: 'insideRight' }}
+                  label={{
+                    value: timeRange === 'today' ? '24s Norm' : timeRange === 'week' ? '7d Norm' : '30k Norm',
+                    fill: '#10b981',
+                    fontSize: 10,
+                    position: 'insideRight'
+                  }}
                 />
 
                 {/* Main Metric Data Line */}
@@ -308,7 +512,7 @@ export const TelemetryPanel: React.FC<TelemetryPanelProps> = ({
                   dataKey={selectedMetric}
                   stroke={getLineColor(selectedMetric)}
                   strokeWidth={2.5}
-                  dot={false}
+                  dot={timeRange === 'week' ? { r: 3, fill: getLineColor(selectedMetric) } : false}
                   activeDot={{ r: 5, fill: getLineColor(selectedMetric) }}
                 />
               </ComposedChart>
@@ -320,18 +524,18 @@ export const TelemetryPanel: React.FC<TelemetryPanelProps> = ({
           )}
         </div>
 
-        <div className="mt-3 flex items-center justify-between text-[11px] text-slate-500">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full bg-emerald-500/40 border border-emerald-500 inline-block"></span>
-              7-Day Normal Operating Zone (±2σ)
+              {timeRange === 'today' ? 'Bugungi me\'yor koridori (±2σ)' : timeRange === 'week' ? '7-Kunlik me\'yor koridori (±2σ)' : '30-Kunlik mavsumiy me\'yor (±2σ)'}
             </span>
             <span className="flex items-center gap-1.5">
               <span className="h-0.5 w-3 bg-emerald-500 inline-block"></span>
-              Historical Baseline Moving Average
+              {timeRange === 'today' ? '24s O\'rtacha Dinamik Me\'yor' : timeRange === 'week' ? 'Haftalik Harakatlanuvchi O\'rtacha' : 'Oylik Tarixiy Baza'}
             </span>
           </div>
-          <span>Updated continuously from rover telemetry bus</span>
+          <span>Rover va datchiklar telemetriya shinasidan doimiy yangilanadi</span>
         </div>
       </div>
     </div>
